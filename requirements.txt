@@ -1,0 +1,4 @@
+telebot
+requests
+beautifulsoup4
+cryptography
