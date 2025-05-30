@@ -1,0 +1,8 @@
+telebot
+requests
+beautifulsoup4
+cryptography
+lxml
+gspread
+oauth2client
+python-dotenv
