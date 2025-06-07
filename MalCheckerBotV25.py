@@ -10,33 +10,29 @@ import os
 import hashlib
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 from cryptography.fernet import Fernet
-from config_ob import (ENCRYPTED_TELEGRAM_BOT_TOKEN, ENCRYPTED_VIRUSTOTAL_API_KEY,
-                       ENCRYPTED_GOOGLE_SAFE_BROWSING_API_KEY, ENCRYPTED_AIML_API_KEY,
-                       ENCRYPTED_AIML_API_URL, ENCRYPTION_KEY)
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from dotenv import load_dotenv
 import datetime
+import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-cipher = Fernet(ENCRYPTION_KEY)
-TELEGRAM_BOT_TOKEN = cipher.decrypt(ENCRYPTED_TELEGRAM_BOT_TOKEN).decode()
-VIRUSTOTAL_API_KEY = cipher.decrypt(ENCRYPTED_VIRUSTOTAL_API_KEY).decode()
-GOOGLE_SAFE_BROWSING_API_KEY = cipher.decrypt(ENCRYPTED_GOOGLE_SAFE_BROWSING_API_KEY).decode()
-AIML_API_KEY = cipher.decrypt(ENCRYPTED_AIML_API_KEY).decode()
-AIML_API_URL = cipher.decrypt(ENCRYPTED_AIML_API_URL).decode()
+with open('malcheckerbot_config.json', 'r') as config_file:
+    config = json.load(config_file)
+cipher = Fernet(config['encrypted_keys']['ENCRYPTION_KEY'].encode())
+TELEGRAM_BOT_TOKEN = cipher.decrypt(config['encrypted_keys']['ENCRYPTED_TELEGRAM_BOT_TOKEN'].encode()).decode()
+VIRUSTOTAL_API_KEY = cipher.decrypt(config['encrypted_keys']['ENCRYPTED_VIRUSTOTAL_API_KEY'].encode()).decode()
+GOOGLE_SAFE_BROWSING_API_KEY = cipher.decrypt(config['encrypted_keys']['ENCRYPTED_GOOGLE_SAFE_BROWSING_API_KEY'].encode()).decode()
+AIML_API_KEY = cipher.decrypt(config['encrypted_keys']['ENCRYPTED_AIML_API_KEY'].encode()).decode()
+AIML_API_URL = cipher.decrypt(config['encrypted_keys']['ENCRYPTED_AIML_API_URL'].encode()).decode()
+GOOGLE_CREDENTIALS = config['service_account']
+SPREADSHEET_ID = config['environment']['SPREADSHEET_ID']
+CLICKS_SHEET_NAME = config['environment']['CLICKS_SHEET_NAME']
+USERS_SHEET_NAME = config['environment']['USERS_SHEET_NAME']
+PROXY_CONFIG = config['proxy']
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-load_dotenv()
-GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE')
-SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
-CLICKS_SHEET_NAME = os.getenv('CLICKS_SHEET_NAME', 'Клики')
-USERS_SHEET_NAME = os.getenv('USERS_SHEET_NAME', 'Пользователи')
-if not os.path.exists(GOOGLE_CREDENTIALS_FILE):
-    logger.error(f"Файл {GOOGLE_CREDENTIALS_FILE} не найден!")
-    exit(1)
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 try:
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_CREDENTIALS_FILE, scope)
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS, scope)
     client = gspread.authorize(credentials)
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
     try:
@@ -114,7 +110,7 @@ def animate_ai_loading(bot, chat_id, message_id):
     stop_flags[chat_id] = False
     while not stop_flags[chat_id]:
         try:
-            bot.edit_message_text(animation_frames[frame_index], chat_id, message_id)
+            bot.edit_message_text(animation_frames[frame_index], chat_id=chat_id, message_id=message_id)
             frame_index = (frame_index + 1) % len(animation_frames)
             time.sleep(1.5)
             if chat_id in results and results[chat_id] is not None:
@@ -127,7 +123,7 @@ def animate_file_loading(bot, chat_id, message_id):
     stop_flags[chat_id] = False
     while not stop_flags[chat_id]:
         try:
-            bot.edit_message_text(animation_frames[frame_index], chat_id, message_id)
+            bot.edit_message_text(animation_frames[frame_index], chat_id=chat_id, message_id=message_id)
             frame_index = (frame_index + 1) % len(animation_frames)
             time.sleep(3)
             if chat_id in results and results[chat_id] is not None:
@@ -270,11 +266,7 @@ def check_with_spamcalls(phone_number):
         if not phone_number[1:].isdigit():
             return {"error": "☎️ Номер должен содержать только цифры после плюса\nПопробуйте ещё раз 🥺"}
         url = f'https://spamcalls.net/en/search?q={phone_number}'
-        proxies = {
-            "http": "http://kvufzuvo:k703tsxis9nt@198.23.239.134:6540",
-            "https": "http://kvufzuvo:k703tsxis9nt@198.23.239.134:6540"
-        }
-        response = requests.get(url, proxies=proxies, timeout=10)
+        response = requests.get(url, proxies=PROXY_CONFIG, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "lxml")
             title = soup.find("h1")
